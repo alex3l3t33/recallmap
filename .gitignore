@@ -1,0 +1,5 @@
+node_modules/
+main.js
+tests/model.bundle.mjs
+*.log
+.DS_Store

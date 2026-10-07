@@ -1,0 +1,9 @@
+{
+  "id": "recallmap",
+  "name": "RecallMap",
+  "version": "0.1.0",
+  "minAppVersion": "1.7.2",
+  "description": "Map memory health, predict forgetting, and review knowledge before it fades.",
+  "author": "Alexandre CharByte",
+  "isDesktopOnly": false
+}
