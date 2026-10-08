@@ -191,10 +191,6 @@ export default class RecallMapPlugin extends Plugin {
     this.addSettingTab(new RecallMapSettingTab(this));
   }
 
-  onunload(): void {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_RECALLMAP);
-  }
-
   async activateView(): Promise<void> {
     const existingLeaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_RECALLMAP)[0];
     const leaf = existingLeaf ?? this.app.workspace.getLeaf(true);
@@ -1175,7 +1171,9 @@ class RecallMapSettingTab extends PluginSettingTab {
     appendIcon(mark, "sliders-horizontal");
     const heroCopy = hero.createDiv();
     heroCopy.createEl("p", { cls: "recallmap-eyebrow", text: "RecallMap preferences" });
-    heroCopy.createEl("h1", { text: "Tune the experience, not the science" });
+    new Setting(heroCopy)
+      .setName("Tune the experience, not the science")
+      .setHeading();
     heroCopy.createEl("p", {
       text: "Adjust reading and complexity estimates while keeping recall probability and memory stability independent.",
     });
@@ -1188,10 +1186,10 @@ class RecallMapSettingTab extends PluginSettingTab {
     const previewHeading = preview.createDiv({ cls: "recallmap-settings-card__heading" });
     const previewHeadingCopy = previewHeading.createDiv();
     previewHeadingCopy.createEl("p", { cls: "recallmap-eyebrow", text: "Live example" });
-    previewHeadingCopy.createEl("h2", {
-      text: "See complexity in context",
-      attr: { id: "recallmap-preview-title" },
-    });
+    new Setting(previewHeadingCopy)
+      .setName("See complexity in context")
+      .setHeading()
+      .settingEl.setAttribute("id", "recallmap-preview-title");
     previewHeading.createSpan({
       cls: "recallmap-pill recallmap-pill--accent",
       text: "Updates instantly",
@@ -1501,7 +1499,9 @@ class RecallMapSettingTab extends PluginSettingTab {
     const icon = heading.createDiv({ cls: "recallmap-settings-card__icon" });
     appendIcon(icon, iconName);
     const copy = heading.createDiv();
-    copy.createEl("h2", { text: title });
+    new Setting(copy)
+      .setName(title)
+      .setHeading();
     copy.createEl("p", { text: description });
     return section;
   }
