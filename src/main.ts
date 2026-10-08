@@ -1400,10 +1400,15 @@ class RecallMapSettingTab extends PluginSettingTab {
               this.plugin.settings.complexityMultipliers = {
                 ...DEFAULT_COMPLEXITY_MULTIPLIERS,
               };
-              void this.plugin.saveStore().then(() => {
-                new Notice("RecallMap complexity multipliers restored.");
-                this.update();
-              });
+              void this.plugin.saveStore()
+                .then(() => {
+                  new Notice("RecallMap complexity multipliers restored.");
+                  this.display();
+                })
+                .catch((error: unknown) => {
+                  console.error("RecallMap: Failed to restore multipliers", error);
+                  new Notice("Could not save RecallMap settings.");
+                });
             },
           },
         ],
