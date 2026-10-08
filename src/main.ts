@@ -1371,12 +1371,13 @@ class RecallMapSettingTab extends PluginSettingTab {
             control: {
               type: "dropdown",
               key: "defaultComplexity",
-              options: Object.fromEntries(
-                COMPLEXITY_LEVELS.map((level) => [
-                  level,
-                  COMPLEXITY_LABELS[level],
-                ]),
-              ),
+              options: {
+                "very-easy": COMPLEXITY_LABELS["very-easy"],
+                easy: COMPLEXITY_LABELS.easy,
+                normal: COMPLEXITY_LABELS.normal,
+                complex: COMPLEXITY_LABELS.complex,
+                "very-complex": COMPLEXITY_LABELS["very-complex"],
+              },
             },
           },
         ],
