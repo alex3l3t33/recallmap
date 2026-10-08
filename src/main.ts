@@ -8,6 +8,8 @@ import {
   TFile,
   WorkspaceLeaf,
   setIcon,
+  type SettingDefinition,
+  type SettingDefinitionItem,
 } from "obsidian";
 
 import {
@@ -1155,10 +1157,329 @@ class RecallMapView extends ItemView {
 
 class RecallMapSettingTab extends PluginSettingTab {
   private readonly plugin: RecallMapPlugin;
+  private previewUpdater: (() => void) | null = null;
 
   constructor(plugin: RecallMapPlugin) {
     super(plugin.app, plugin);
     this.plugin = plugin;
+  }
+
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    const numericSetting = (
+      name: string,
+      desc: string,
+      key: string,
+      min: number,
+      max: number,
+      step: number,
+    ): SettingDefinition => ({
+      name,
+      desc,
+      control: {
+        type: "number",
+        key,
+        min,
+        max,
+        step,
+        validate: (value: number) =>
+          Number.isFinite(value) && value >= min && value <= max
+            ? undefined
+            : `Enter a value between ${min} and ${max}.`,
+      },
+    });
+
+    return [
+      {
+        name: "Interactive review-time preview",
+        desc: "Estimate review duration for a sample 500-word note.",
+        searchable: false,
+        render: (setting) => {
+          const container = setting.settingEl;
+          container.classList.add("recallmap-settings-preview");
+
+          const preview = container.createDiv({
+            cls: "recallmap-preview-grid",
+          });
+
+          const sample = preview.createDiv({
+            cls: "recallmap-sample-note",
+          });
+
+          const sampleTop = sample.createDiv({
+            cls: "recallmap-sample-note__top",
+          });
+
+          const sampleIcon = sampleTop.createSpan({
+            cls: "recallmap-sample-note__icon",
+          });
+          appendIcon(sampleIcon, "network");
+
+          const sampleTitle = sampleTop.createDiv();
+          sampleTitle.createSpan({ text: "Sample note" });
+          sampleTitle.createEl("strong", {
+            text: "Kafka Connect Architecture",
+          });
+
+          const sampleMeta = sample.createDiv({
+            cls: "recallmap-sample-note__meta",
+          });
+
+          renderMetaItem(sampleMeta, "file-text", "500 words");
+
+          const result = preview.createDiv({
+            cls: "recallmap-preview-result",
+          });
+
+          const label = result.createEl("label", {
+            cls: "recallmap-preview-result__control",
+          });
+          label.createSpan({ text: "Preview complexity" });
+
+          const select = label.createEl("select");
+
+          for (const level of COMPLEXITY_LEVELS) {
+            select.createEl("option", {
+              text: COMPLEXITY_LABELS[level],
+              attr: { value: level },
+            });
+          }
+
+          select.value = this.plugin.settings.defaultComplexity;
+
+          const estimateLabel = result.createSpan({
+            text: "Estimated review",
+          });
+          estimateLabel.classList.add(
+            "recallmap-preview-result__label",
+          );
+
+          const estimateValue = result.createEl("strong", {
+            cls: "recallmap-preview-result__value",
+          });
+
+          const formula = result.createDiv({
+            cls: "recallmap-preview-formula",
+          });
+
+          const baseValue = formula.createSpan();
+          formula.createSpan({ text: "×" });
+          const multiplierValue = formula.createSpan();
+
+          const updatePreview = (): void => {
+            const settings = this.plugin.settings;
+            const complexity = select.value as NoteComplexity;
+
+            const baseSeconds = estimateReviewSeconds(
+              500,
+              settings.readingWordsPerMinute,
+              settings.activeRecallSeconds,
+              settings.ratingSeconds,
+              "normal",
+              { ...settings.complexityMultipliers, normal: 1 },
+            );
+
+            const estimate = estimateReviewSeconds(
+              500,
+              settings.readingWordsPerMinute,
+              settings.activeRecallSeconds,
+              settings.ratingSeconds,
+              complexity,
+              settings.complexityMultipliers,
+            );
+
+            estimateValue.setText(formatDuration(estimate));
+            baseValue.setText(
+              `${formatDuration(baseSeconds)} base`,
+            );
+            multiplierValue.setText(
+              `${settings.complexityMultipliers[complexity].toFixed(1)}× complexity`,
+            );
+          };
+
+          select.addEventListener("change", updatePreview);
+          updatePreview();
+
+          this.previewUpdater = updatePreview;
+
+          return () => {
+            select.removeEventListener("change", updatePreview);
+            if (this.previewUpdater === updatePreview) {
+              this.previewUpdater = null;
+            }
+          };
+        },
+      },
+      {
+        type: "group",
+        heading: "Vault scope",
+        items: [
+          {
+            name: "Excluded folders",
+            desc: "Enter vault-relative folder paths, one per line.",
+            control: {
+              type: "textarea",
+              key: "excludedFolders",
+              rows: 5,
+              placeholder: "Templates\\nArchive\\n00 Inbox/Imports",
+            },
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Timing model",
+        items: [
+          numericSetting(
+            "Reading speed",
+            "Average words read per minute.",
+            "readingWordsPerMinute",
+            50, 1000, 10,
+          ),
+          numericSetting(
+            "Active recall time",
+            "Thinking time before revealing a note.",
+            "activeRecallSeconds",
+            0, 600, 5,
+          ),
+          numericSetting(
+            "Rating time",
+            "Time allowed to rate a review.",
+            "ratingSeconds",
+            0, 300, 5,
+          ),
+        ],
+      },
+      {
+        type: "group",
+        heading: "Memory model",
+        items: [
+          numericSetting(
+            "Review threshold",
+            "Recall percentage below which a note needs review.",
+            "reviewThreshold",
+            20, 90, 5,
+          ),
+          numericSetting(
+            "Initial stability",
+            "Initial memory stability in days.",
+            "initialStabilityDays",
+            1, 365, 1,
+          ),
+          {
+            name: "Default note complexity",
+            desc: "Default complexity assigned to notes.",
+            control: {
+              type: "dropdown",
+              key: "defaultComplexity",
+              options: Object.fromEntries(
+                COMPLEXITY_LEVELS.map((level) => [
+                  level,
+                  COMPLEXITY_LABELS[level],
+                ]),
+              ),
+            },
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Complexity multipliers",
+        items: [
+          ...COMPLEXITY_LEVELS.map((level) =>
+            numericSetting(
+              COMPLEXITY_LABELS[level],
+              getComplexityDescription(level),
+              `complexityMultipliers.${level}`,
+              0.1, 5, 0.1,
+            ),
+          ),
+          {
+            name: "Restore recommended multipliers",
+            desc: "Reset complexity multipliers to RecallMap defaults.",
+            action: () => {
+              this.plugin.settings.complexityMultipliers = {
+                ...DEFAULT_COMPLEXITY_MULTIPLIERS,
+              };
+              void this.plugin.saveStore().then(() => {
+                new Notice("RecallMap complexity multipliers restored.");
+                this.update();
+              });
+            },
+          },
+        ],
+      },
+    ];
+  }
+
+  getControlValue(key: string): unknown {
+    if (key === "excludedFolders") {
+      return this.plugin.settings.excludedFolders.join("\\n");
+    }
+
+    if (key.startsWith("complexityMultipliers.")) {
+      const level = key.split(".")[1] as NoteComplexity;
+      return COMPLEXITY_LEVELS.includes(level)
+        ? this.plugin.settings.complexityMultipliers[level]
+        : undefined;
+    }
+
+    if (key in this.plugin.settings) {
+      return this.plugin.settings[key as keyof RecallMapSettings];
+    }
+
+    return undefined;
+  }
+
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    const settings = this.plugin.settings;
+
+    if (key === "excludedFolders") {
+      if (typeof value !== "string") return;
+      settings.excludedFolders = normalizeExcludedFolders(value);
+    } else if (key.startsWith("complexityMultipliers.")) {
+      const level = key.split(".")[1] as NoteComplexity;
+      if (!COMPLEXITY_LEVELS.includes(level)) return;
+      if (typeof value !== "number" || !Number.isFinite(value)) return;
+      if (value < 0.1 || value > 5) return;
+      settings.complexityMultipliers[level] = value;
+    } else if (key === "defaultComplexity") {
+      if (!COMPLEXITY_LEVELS.includes(value as NoteComplexity)) return;
+      settings.defaultComplexity = value as NoteComplexity;
+    } else {
+      const ranges: Record<string, [number, number]> = {
+        readingWordsPerMinute: [50, 1000],
+        activeRecallSeconds: [0, 600],
+        ratingSeconds: [0, 300],
+        reviewThreshold: [20, 90],
+        initialStabilityDays: [1, 365],
+      };
+
+      const range = ranges[key];
+      if (!range || typeof value !== "number") return;
+      if (!Number.isFinite(value)) return;
+      if (value < range[0] || value > range[1]) return;
+
+      switch (key) {
+        case "readingWordsPerMinute":
+          settings.readingWordsPerMinute = value;
+          break;
+        case "activeRecallSeconds":
+          settings.activeRecallSeconds = value;
+          break;
+        case "ratingSeconds":
+          settings.ratingSeconds = value;
+          break;
+        case "reviewThreshold":
+          settings.reviewThreshold = value;
+          break;
+        case "initialStabilityDays":
+          settings.initialStabilityDays = value;
+          break;
+      }
+    }
+
+    await this.plugin.saveStore();
+    this.previewUpdater?.();
   }
 
   display(): void {
