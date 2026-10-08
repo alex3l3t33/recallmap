@@ -4,7 +4,6 @@ import {
   Notice,
   Plugin,
   PluginSettingTab,
-  Setting,
   TFile,
   WorkspaceLeaf,
   setIcon,
@@ -800,7 +799,7 @@ class RecallMapView extends ItemView {
     );
     renderMetaItem(meta, "history", `${formatDays(note.record.stabilityDays)} stability`);
 
-    if (note.record.lastReviewed > 0 && note.record.firstLearnedAt) {
+    if (note.record.lastReviewed > 0) {
       const reviewed = meta.createSpan({
         cls: "recallmap-reviewed-chip",
         attr: {
@@ -1320,7 +1319,7 @@ class RecallMapSettingTab extends PluginSettingTab {
               type: "textarea",
               key: "excludedFolders",
               rows: 5,
-              placeholder: "Templates\\nArchive\\n00 Inbox/Imports",
+              placeholder: "Templates\nArchive\n00 Inbox/Imports",
             },
           },
         ],
@@ -1404,7 +1403,7 @@ class RecallMapSettingTab extends PluginSettingTab {
               void this.plugin.saveStore()
                 .then(() => {
                   new Notice("RecallMap complexity multipliers restored.");
-                  this.display();
+                  this.update();
                 })
                 .catch((error: unknown) => {
                   console.error("RecallMap: Failed to restore multipliers", error);
@@ -1419,7 +1418,7 @@ class RecallMapSettingTab extends PluginSettingTab {
 
   getControlValue(key: string): unknown {
     if (key === "excludedFolders") {
-      return this.plugin.settings.excludedFolders.join("\\n");
+      return this.plugin.settings.excludedFolders.join("\n");
     }
 
     if (key.startsWith("complexityMultipliers.")) {
@@ -1488,387 +1487,7 @@ class RecallMapSettingTab extends PluginSettingTab {
     this.previewUpdater?.();
   }
 
-  display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
-    containerEl.classList.add("recallmap-settings");
 
-    const hero = containerEl.createDiv({ cls: "recallmap-settings-hero" });
-    const mark = hero.createDiv({ cls: "recallmap-settings-hero__mark" });
-    appendIcon(mark, "sliders-horizontal");
-    const heroCopy = hero.createDiv();
-    heroCopy.createEl("p", { cls: "recallmap-eyebrow", text: "RecallMap preferences" });
-    new Setting(heroCopy)
-      .setName("Tune the experience, not the science")
-      .setHeading();
-    heroCopy.createEl("p", {
-      text: "Adjust reading and complexity estimates while keeping recall probability and memory stability independent.",
-    });
-
-    let previewComplexity = this.plugin.settings.defaultComplexity;
-    const preview = containerEl.createEl("section", {
-      cls: "recallmap-settings-card recallmap-settings-preview",
-      attr: { "aria-labelledby": "recallmap-preview-title" },
-    });
-    const previewHeading = preview.createDiv({ cls: "recallmap-settings-card__heading" });
-    const previewHeadingCopy = previewHeading.createDiv();
-    previewHeadingCopy.createEl("p", { cls: "recallmap-eyebrow", text: "Live example" });
-    new Setting(previewHeadingCopy)
-      .setName("See complexity in context")
-      .setHeading()
-      .settingEl.setAttribute("id", "recallmap-preview-title");
-    previewHeading.createSpan({
-      cls: "recallmap-pill recallmap-pill--accent",
-      text: "Updates instantly",
-    });
-
-    const previewGrid = preview.createDiv({ cls: "recallmap-preview-grid" });
-    const sample = previewGrid.createDiv({ cls: "recallmap-sample-note" });
-    const sampleTop = sample.createDiv({ cls: "recallmap-sample-note__top" });
-    const sampleIcon = sampleTop.createSpan({ cls: "recallmap-sample-note__icon" });
-    appendIcon(sampleIcon, "network");
-    const sampleTitle = sampleTop.createDiv();
-    sampleTitle.createSpan({ text: "Sample note" });
-    sampleTitle.createEl("strong", { text: "Kafka Connect Architecture" });
-    const sampleMeta = sample.createDiv({ cls: "recallmap-sample-note__meta" });
-    renderMetaItem(sampleMeta, "file-text", "500 words");
-    const activeRecallPreview = renderMetaItem(
-      sampleMeta,
-      "brain",
-      `${this.plugin.settings.activeRecallSeconds}s active recall`,
-    );
-    const ratingPreview = renderMetaItem(
-      sampleMeta,
-      "mouse-pointer-click",
-      `${this.plugin.settings.ratingSeconds}s rating`,
-    );
-
-    const previewResult = previewGrid.createDiv({ cls: "recallmap-preview-result" });
-    const previewControl = previewResult.createEl("label", {
-      cls: "recallmap-preview-result__control",
-    });
-    previewControl.createSpan({ text: "Preview complexity" });
-    const previewSelect = previewControl.createEl("select");
-    for (const complexity of COMPLEXITY_LEVELS) {
-      previewSelect.createEl("option", {
-        text: COMPLEXITY_LABELS[complexity],
-        attr: { value: complexity },
-      });
-    }
-    previewSelect.value = previewComplexity;
-
-    const estimateLabel = previewResult.createSpan({ text: "Estimated review" });
-    estimateLabel.classList.add("recallmap-preview-result__label");
-    const estimateValue = previewResult.createEl("strong", {
-      cls: "recallmap-preview-result__value",
-    });
-    const formula = previewResult.createDiv({ cls: "recallmap-preview-formula" });
-    const baseValue = formula.createSpan();
-    formula.createSpan({ text: "×" });
-    const multiplierValue = formula.createSpan();
-
-    const updatePreview = (): void => {
-      const baseSeconds = estimateReviewSeconds(
-        500,
-        this.plugin.settings.readingWordsPerMinute,
-        this.plugin.settings.activeRecallSeconds,
-        this.plugin.settings.ratingSeconds,
-        "normal",
-        { ...this.plugin.settings.complexityMultipliers, normal: 1 },
-      );
-      const estimate = estimateReviewSeconds(
-        500,
-        this.plugin.settings.readingWordsPerMinute,
-        this.plugin.settings.activeRecallSeconds,
-        this.plugin.settings.ratingSeconds,
-        previewComplexity,
-        this.plugin.settings.complexityMultipliers,
-      );
-      estimateValue.setText(formatDuration(estimate));
-      baseValue.setText(`${formatDuration(baseSeconds)} base`);
-      multiplierValue.setText(
-        `${this.plugin.settings.complexityMultipliers[previewComplexity].toFixed(1)}× complexity`,
-      );
-      activeRecallPreview.setText(
-        `${this.plugin.settings.activeRecallSeconds}s active recall`,
-      );
-      ratingPreview.setText(`${this.plugin.settings.ratingSeconds}s rating`);
-    };
-
-    previewSelect.addEventListener("change", () => {
-      previewComplexity = previewSelect.value as NoteComplexity;
-      updatePreview();
-    });
-    updatePreview();
-
-    const scope = this.createSettingsSection(
-      containerEl,
-      "Vault scope",
-      "Keep archives, templates, imports, or any private workspace out of RecallMap.",
-      "folder-x",
-    );
-    let scopeSummary: HTMLDivElement | null = null;
-    const updateScopeSummary = (folders: readonly string[]): void => {
-      if (!scopeSummary) return;
-      scopeSummary.empty();
-      const icon = scopeSummary.createDiv({ cls: "recallmap-scope-summary__icon" });
-      appendIcon(icon, folders.length ? "folder-minus" : "folder-check");
-      const copy = scopeSummary.createDiv();
-      copy.createEl("strong", {
-        text: folders.length
-          ? `${folders.length} folder${folders.length === 1 ? "" : "s"} excluded`
-          : "All vault folders are included",
-      });
-      copy.createEl("p", {
-        text: folders.length
-          ? "Each path also excludes every folder and note beneath it."
-          : "Add vault-relative paths whenever part of the vault should stay outside the memory map.",
-      });
-    };
-
-    const excludedFolders = new Setting(scope)
-      .setName("Excluded folders")
-      .setDesc(
-        "Enter one vault-relative folder path per line. Examples: Templates, Archive/Cold, 00 Inbox/Imports. Changes apply on the next dashboard refresh.",
-      )
-      .addTextArea((textArea) => {
-        textArea.setPlaceholder("Templates\nArchive\n00 Inbox/Imports");
-        textArea.setValue(this.plugin.settings.excludedFolders.join("\n"));
-        textArea.inputEl.rows = 5;
-        textArea.inputEl.spellcheck = false;
-        textArea.inputEl.setAttribute("aria-label", "Folders excluded from RecallMap");
-        textArea.onChange((value) => {
-          const folders = normalizeExcludedFolders(value);
-          this.plugin.settings.excludedFolders = folders;
-          updateScopeSummary(folders);
-          void this.plugin.saveStore();
-        });
-      });
-    excludedFolders.settingEl.classList.add(
-      "recallmap-setting-row",
-      "recallmap-setting-row--textarea",
-    );
-
-    scopeSummary = scope.createDiv({ cls: "recallmap-scope-summary" });
-    updateScopeSummary(this.plugin.settings.excludedFolders);
-
-    const timing = this.createSettingsSection(
-      containerEl,
-      "Timing model",
-      "These inputs estimate how long a review will take. They do not change the forgetting curve.",
-      "clock-3",
-    );
-
-    this.addNumberSetting(
-      timing,
-      "Reading speed",
-      "Average words read per minute while checking a revealed note.",
-      this.plugin.settings.readingWordsPerMinute,
-      50,
-      1000,
-      10,
-      async (value) => {
-        this.plugin.settings.readingWordsPerMinute = value;
-        await this.plugin.saveStore();
-        updatePreview();
-      },
-      "words/min",
-    );
-
-    this.addNumberSetting(
-      timing,
-      "Active recall time",
-      "Thinking time reserved before the note is revealed.",
-      this.plugin.settings.activeRecallSeconds,
-      0,
-      600,
-      5,
-      async (value) => {
-        this.plugin.settings.activeRecallSeconds = value;
-        await this.plugin.saveStore();
-        updatePreview();
-      },
-      "seconds",
-    );
-
-    this.addNumberSetting(
-      timing,
-      "Rating time",
-      "Time allowed to compare your recall and choose a result.",
-      this.plugin.settings.ratingSeconds,
-      0,
-      300,
-      5,
-      async (value) => {
-        this.plugin.settings.ratingSeconds = value;
-        await this.plugin.saveStore();
-        updatePreview();
-      },
-      "seconds",
-    );
-
-    const memory = this.createSettingsSection(
-      containerEl,
-      "Memory model",
-      "Set when a note enters the review queue and how new notes begin.",
-      "activity",
-    );
-
-    this.addNumberSetting(
-      memory,
-      "Review threshold",
-      "Notes below this estimated recall percentage appear in Needs review.",
-      this.plugin.settings.reviewThreshold,
-      20,
-      90,
-      5,
-      async (value) => {
-        this.plugin.settings.reviewThreshold = value;
-        await this.plugin.saveStore();
-      },
-      "% recall",
-    );
-
-    this.addNumberSetting(
-      memory,
-      "Initial stability",
-      "Starting stability window for notes that have not been explicitly reviewed.",
-      this.plugin.settings.initialStabilityDays,
-      1,
-      365,
-      1,
-      async (value) => {
-        this.plugin.settings.initialStabilityDays = value;
-        await this.plugin.saveStore();
-      },
-      "days",
-    );
-
-    const defaultComplexity = new Setting(memory)
-      .setName("Default note complexity")
-      .setDesc("Applied automatically until a note receives a manual override.")
-      .addDropdown((dropdown) => {
-        for (const complexity of COMPLEXITY_LEVELS) {
-          dropdown.addOption(complexity, COMPLEXITY_LABELS[complexity]);
-        }
-        dropdown.setValue(this.plugin.settings.defaultComplexity);
-        dropdown.onChange((value) => {
-          const complexity = value as NoteComplexity;
-          this.plugin.settings.defaultComplexity = complexity;
-          previewComplexity = complexity;
-          previewSelect.value = complexity;
-          void this.plugin.saveStore().then(updatePreview);
-        });
-      });
-    defaultComplexity.settingEl.classList.add("recallmap-setting-row");
-
-    const complexity = this.createSettingsSection(
-      containerEl,
-      "Complexity multipliers",
-      "Fine-tune review-time estimates. Every note can override the default from the dashboard.",
-      "sliders-horizontal",
-    );
-
-    for (const level of COMPLEXITY_LEVELS) {
-      this.addNumberSetting(
-        complexity,
-        COMPLEXITY_LABELS[level],
-        getComplexityDescription(level),
-        this.plugin.settings.complexityMultipliers[level],
-        0.1,
-        5,
-        0.1,
-        async (value) => {
-          this.plugin.settings.complexityMultipliers[level] = value;
-          await this.plugin.saveStore();
-          updatePreview();
-        },
-        "× base",
-      );
-    }
-
-    const reset = new Setting(complexity)
-      .setName("Restore recommended multipliers")
-      .setDesc("Reset only the five complexity multipliers to RecallMap defaults.")
-      .addButton((button) => {
-        button.setButtonText("Restore defaults");
-        button.setIcon("rotate-ccw");
-        button.onClick(() => {
-          this.plugin.settings.complexityMultipliers = {
-            ...DEFAULT_COMPLEXITY_MULTIPLIERS,
-          };
-          void this.plugin.saveStore().then(() => {
-            new Notice("RecallMap complexity multipliers restored.");
-            this.display();
-          });
-        });
-      });
-    reset.settingEl.classList.add("recallmap-setting-row", "recallmap-setting-row--reset");
-
-    const boundary = containerEl.createDiv({ cls: "recallmap-model-boundary" });
-    const boundaryIcon = boundary.createDiv({ cls: "recallmap-model-boundary__icon" });
-    appendIcon(boundaryIcon, "shield-check");
-    const boundaryCopy = boundary.createDiv();
-    boundaryCopy.createEl("strong", { text: "Complexity changes time—nothing else" });
-    boundaryCopy.createEl("p", {
-      text: "Manual complexity never affects recall probability, memory stability, Ebbinghaus decay, or review scheduling.",
-    });
-  }
-
-  private createSettingsSection(
-    parent: HTMLElement,
-    title: string,
-    description: string,
-    iconName: string,
-  ): HTMLElement {
-    const section = parent.createEl("section", { cls: "recallmap-settings-card" });
-    const heading = section.createDiv({ cls: "recallmap-settings-card__heading" });
-    const icon = heading.createDiv({ cls: "recallmap-settings-card__icon" });
-    appendIcon(icon, iconName);
-    const copy = heading.createDiv();
-    new Setting(copy)
-      .setName(title)
-      .setHeading();
-    copy.createEl("p", { text: description });
-    return section;
-  }
-
-  private addNumberSetting(
-    parent: HTMLElement,
-    name: string,
-    description: string,
-    value: number,
-    minimum: number,
-    maximum: number,
-    step: number,
-    onValidChange: (value: number) => Promise<void>,
-    suffix: string,
-  ): void {
-    const setting = new Setting(parent)
-      .setName(name)
-      .setDesc(description)
-      .addText((text) => {
-        text.setValue(String(value));
-        text.inputEl.type = "number";
-        text.inputEl.min = String(minimum);
-        text.inputEl.max = String(maximum);
-        text.inputEl.step = String(step);
-        text.inputEl.setAttribute("aria-label", `${name} in ${suffix}`);
-        text.onChange((rawValue) => {
-          const parsed = Number(rawValue);
-          const valid = Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum;
-          text.inputEl.classList.toggle("is-invalid", !valid);
-          if (valid) void onValidChange(parsed);
-        });
-      });
-
-    setting.settingEl.classList.add("recallmap-setting-row");
-    const control = setting.controlEl.createSpan({
-      cls: "recallmap-setting-suffix",
-      text: suffix,
-    });
-    control.setAttribute("aria-hidden", "true");
-  }
 }
 
 function formatReviewedTimestamp(timestamp: number, now = Date.now()): string {
