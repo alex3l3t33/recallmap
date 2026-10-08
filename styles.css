@@ -1018,7 +1018,7 @@
 .recallmap-note-row__title:hover {
   color: var(--rm-accent);
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--rm-accent) 45%, transparent);
+  text-decoration-color: var(--rm-accent);
   text-underline-offset: 3px;
 }
 

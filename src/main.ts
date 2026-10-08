@@ -202,7 +202,7 @@ export default class RecallMapPlugin extends Plugin {
       });
     }
 
-    this.app.workspace.revealLeaf(leaf);
+    await this.app.workspace.revealLeaf(leaf);
   }
 
   getRecord(file: TFile): MemoryRecord {
@@ -1722,8 +1722,7 @@ function boundedNumber(
 }
 
 function createIconElement(iconName: string): HTMLSpanElement {
-  const icon = document.createElement("span");
-  icon.className = "recallmap-inline-icon";
+  const icon = createSpan({ cls: "recallmap-inline-icon" });
   setIcon(icon, iconName);
   return icon;
 }

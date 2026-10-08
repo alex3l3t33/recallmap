@@ -1,7 +1,7 @@
 {
   "id": "recallmap",
   "name": "RecallMap",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "minAppVersion": "1.7.2",
   "description": "See what your vault remembers, review what is fading, and strengthen knowledge with an Ebbinghaus-based recall workflow.",
   "author": "Alexandre Charbit",
