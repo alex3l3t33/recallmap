@@ -30,20 +30,20 @@ import {
   type ComplexityMultipliers,
   type DashboardFilter,
   type MemoryRecord,
+  type NoteComplexity,
+  type ReviewRating,
   type ReviewResult,
 } from "./ui-model";
 
 import {
   nextReviewTimestamp,
-  type Complexity,
-  type ReviewRating,
 } from "./model";
 
 const VIEW_TYPE_RECALLMAP = "recallmap-dashboard";
 
 interface RecallMapSettings {
   excludedFolders: string[];
-  defaultComplexity: Complexity;
+  defaultComplexity: NoteComplexity;
   complexityMultipliers: ComplexityMultipliers;
   readingWordsPerMinute: number;
   activeRecallSeconds: number;
@@ -63,7 +63,7 @@ interface NoteMetric {
   wordCountIsEstimate: boolean;
   recall: number;
   record: MemoryRecord;
-  complexity: Complexity;
+  complexity: NoteComplexity;
   estimatedSeconds: number;
 }
 
@@ -139,14 +139,14 @@ const REVIEW_RATINGS: readonly {
   icon: string;
 }[] = [
   {
-    rating: "forgot",
-    label: "Forgot",
+    rating: "forgotten",
+    label: "Forgotten",
     hint: "Could not recall",
     icon: "x",
   },
   {
-    rating: "hard",
-    label: "Hard",
+    rating: "difficult",
+    label: "Difficult",
     hint: "Recalled with effort",
     icon: "brain",
   },
@@ -211,18 +211,23 @@ export default class RecallMapPlugin extends Plugin {
 
   getRecord(file: TFile): MemoryRecord {
     const stored = this.records[file.path];
-    if (stored) return normalizeRecord(stored, file.stat.ctime || file.stat.mtime, this.settings);
+
+    if (stored) {
+      return normalizeRecord(stored, this.settings);
+    }
 
     return {
-      lastReviewed: file.stat.ctime || file.stat.mtime,
+      lastReviewed: 0,
       stabilityDays: this.settings.initialStabilityDays,
       reviewCount: 0,
+      lapseCount: 0,
+      history: [],
     };
   }
 
   async setComplexity(
     file: TFile,
-    complexityOverride: Complexity | undefined,
+    complexityOverride: NoteComplexity | undefined,
   ): Promise<void> {
     const record = this.getRecord(file);
     if (complexityOverride) {
@@ -240,13 +245,21 @@ export default class RecallMapPlugin extends Plugin {
     rating: ReviewRating,
   ): Promise<{ record: MemoryRecord; result: ReviewResult }> {
     const now = Date.now();
+    const existing = this.getRecord(file);
 
-    const reviewed =
-      applyReview(
-        this.getRecord(file),
-        rating,
-        now,
-      );
+    const baseRecord: MemoryRecord =
+      existing.firstLearnedAt || existing.lastReviewed > 0
+        ? existing
+        : {
+            ...existing,
+            firstLearnedAt: now,
+            lastReviewed: now,
+          };
+
+    const reviewed = applyReview(baseRecord, rating, now);
+
+    reviewed.record.firstLearnedAt =
+      reviewed.record.firstLearnedAt ?? now;
 
     reviewed.record.nextReviewAt =
       nextReviewTimestamp(
@@ -261,11 +274,8 @@ export default class RecallMapPlugin extends Plugin {
         now,
       );
 
-    this.records[file.path] =
-      reviewed.record;
-
+    this.records[file.path] = reviewed.record;
     await this.saveStore();
-
     return reviewed;
   }
 
@@ -395,7 +405,10 @@ class RecallMapView extends ItemView {
       wordCountIsEstimate,
       record,
       complexity,
-      recall: calculateRecall(record.lastReviewed, record.stabilityDays),
+      recall:
+        record.firstLearnedAt || record.lastReviewed > 0
+          ? calculateRecall(record.lastReviewed, record.stabilityDays)
+          : 100,
       estimatedSeconds: estimateReviewSeconds(
         wordCount,
         this.plugin.settings.readingWordsPerMinute,
@@ -789,6 +802,19 @@ class RecallMapView extends ItemView {
     );
     renderMetaItem(meta, "history", `${formatDays(note.record.stabilityDays)} stability`);
 
+    if (note.record.lastReviewed > 0 && note.record.firstLearnedAt) {
+      const reviewed = meta.createSpan({
+        cls: "recallmap-reviewed-chip",
+        attr: {
+          title: `Last reviewed ${formatReviewedTimestamp(note.record.lastReviewed)}`,
+        },
+      });
+      appendIcon(reviewed, "check-circle-2");
+      reviewed.createSpan({
+        text: `Reviewed ${formatReviewedTimestamp(note.record.lastReviewed)}`,
+      });
+    }
+
     const progress = copy.createDiv({ cls: "recallmap-note-progress" });
     progress.setAttribute("role", "progressbar");
     progress.setAttribute("aria-label", `Estimated recall ${Math.round(note.recall)} percent`);
@@ -823,8 +849,8 @@ class RecallMapView extends ItemView {
     select.value = note.record.complexityOverride ?? "default";
     select.addEventListener("change", () => {
       const nextValue = select.value;
-      const override = nextValue === "default" ? undefined : (nextValue as Complexity);
-      void this.updateComplexity(note, override);
+      const override = nextValue === "default" ? undefined : (nextValue as NoteComplexity);
+      void this.updateNoteComplexity(note, override);
     });
 
     const review = controls.createEl("button", {
@@ -864,9 +890,9 @@ class RecallMapView extends ItemView {
     }
   }
 
-  private async updateComplexity(
+  private async updateNoteComplexity(
     note: NoteMetric,
-    override: Complexity | undefined,
+    override: NoteComplexity | undefined,
   ): Promise<void> {
     const previousScrollTop = this.contentEl.scrollTop;
     await this.plugin.setComplexity(note.file, override);
@@ -1026,16 +1052,16 @@ class RecallMapView extends ItemView {
     });
     resultCard.dataset.rating = rating;
     const celebration = resultCard.createDiv({ cls: "recallmap-result-card__celebration" });
-    appendIcon(celebration, rating === "forgot" ? "refresh-cw" : "sparkles");
+    appendIcon(celebration, rating === "forgotten" ? "refresh-cw" : "sparkles");
     resultCard.createEl("p", {
       cls: "recallmap-eyebrow",
-      text: rating === "forgot" ? "Memory reset" : "Memory strengthened",
+      text: rating === "forgotten" ? "Memory reset" : "Memory strengthened",
     });
     resultCard.createEl("h2", { text: note.file.basename });
     resultCard.createEl("p", {
       cls: "recallmap-result-card__summary",
       text:
-        rating === "forgot"
+        rating === "forgotten"
           ? "That honest rating is useful—the note is now scheduled from a shorter stability interval."
           : `You rated this ${capitalize(rating)}. Recall is restored and the next decay window is longer.`,
     });
@@ -1245,7 +1271,7 @@ class RecallMapSettingTab extends PluginSettingTab {
     };
 
     previewSelect.addEventListener("change", () => {
-      previewComplexity = previewSelect.value as Complexity;
+      previewComplexity = previewSelect.value as NoteComplexity;
       updatePreview();
     });
     updatePreview();
@@ -1402,7 +1428,7 @@ class RecallMapSettingTab extends PluginSettingTab {
         }
         dropdown.setValue(this.plugin.settings.defaultComplexity);
         dropdown.onChange((value) => {
-          const complexity = value as Complexity;
+          const complexity = value as NoteComplexity;
           this.plugin.settings.defaultComplexity = complexity;
           previewComplexity = complexity;
           previewSelect.value = complexity;
@@ -1518,22 +1544,103 @@ class RecallMapSettingTab extends PluginSettingTab {
   }
 }
 
+function formatReviewedTimestamp(timestamp: number, now = Date.now()): string {
+  const elapsed = Math.max(0, now - timestamp);
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  if (elapsed < minute) return "just now";
+
+  if (elapsed < hour) {
+    const minutes = Math.floor(elapsed / minute);
+    return `${minutes} min ago`;
+  }
+
+  const reviewed = new Date(timestamp);
+  const current = new Date(now);
+
+  const reviewedDay = new Date(
+    reviewed.getFullYear(),
+    reviewed.getMonth(),
+    reviewed.getDate(),
+  ).getTime();
+
+  const currentDay = new Date(
+    current.getFullYear(),
+    current.getMonth(),
+    current.getDate(),
+  ).getTime();
+
+  const dayDifference = Math.round((currentDay - reviewedDay) / day);
+
+  const time = reviewed.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  if (dayDifference === 0) return `today at ${time}`;
+  if (dayDifference === 1) return `yesterday at ${time}`;
+
+  return reviewed.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 function normalizeRecord(
   record: MemoryRecord,
-  fallbackTimestamp: number,
   settings: RecallMapSettings,
 ): MemoryRecord {
-  const timestamp = normalizeTimestamp(record.lastReviewed, fallbackTimestamp);
+  const rawLastReviewed = Number(record.lastReviewed);
+  const lastReviewed =
+    Number.isFinite(rawLastReviewed) && rawLastReviewed > 0
+      ? rawLastReviewed
+      : 0;
+
   const complexityOverride = COMPLEXITY_LEVELS.includes(
-    record.complexityOverride as Complexity,
+    record.complexityOverride as NoteComplexity,
   )
     ? record.complexityOverride
     : undefined;
 
+  const firstLearnedAt =
+    typeof record.firstLearnedAt === "number" &&
+    Number.isFinite(record.firstLearnedAt) &&
+    record.firstLearnedAt > 0
+      ? record.firstLearnedAt
+      : lastReviewed > 0
+        ? lastReviewed
+        : undefined;
+
+  const nextReviewAt =
+    typeof record.nextReviewAt === "number" &&
+    Number.isFinite(record.nextReviewAt) &&
+    record.nextReviewAt > 0
+      ? record.nextReviewAt
+      : undefined;
+
+  const history = Array.isArray(record.history)
+    ? record.history
+    : [];
+
   return {
-    lastReviewed: timestamp,
-    stabilityDays: positiveNumber(record.stabilityDays, settings.initialStabilityDays),
-    reviewCount: Math.max(0, Math.floor(positiveNumber(record.reviewCount, 0))),
+    lastReviewed,
+    stabilityDays: positiveNumber(
+      record.stabilityDays,
+      settings.initialStabilityDays,
+    ),
+    reviewCount: Math.max(
+      0,
+      Math.floor(positiveNumber(record.reviewCount, 0)),
+    ),
+    lapseCount: Math.max(
+      0,
+      Math.floor(positiveNumber(record.lapseCount ?? 0, 0)),
+    ),
+    history,
+    ...(firstLearnedAt ? { firstLearnedAt } : {}),
+    ...(nextReviewAt ? { nextReviewAt } : {}),
     ...(complexityOverride ? { complexityOverride } : {}),
   };
 }
@@ -1542,9 +1649,9 @@ function normalizeSettings(
   stored: Partial<RecallMapSettings> | undefined,
 ): RecallMapSettings {
   const defaultComplexity = COMPLEXITY_LEVELS.includes(
-    stored?.defaultComplexity as Complexity,
+    stored?.defaultComplexity as NoteComplexity,
   )
-    ? (stored?.defaultComplexity as Complexity)
+    ? (stored?.defaultComplexity as NoteComplexity)
     : DEFAULT_SETTINGS.defaultComplexity;
   const multipliers = { ...DEFAULT_COMPLEXITY_MULTIPLIERS };
 
@@ -1592,12 +1699,6 @@ function normalizeSettings(
       90,
     ),
   };
-}
-
-function normalizeTimestamp(value: number, fallback: number): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  const parsed = Date.parse(String(value));
-  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function positiveNumber(value: number, fallback: number): number {
@@ -1732,8 +1833,8 @@ function getFilterDescription(filter: DashboardFilter): string {
   return descriptions[filter];
 }
 
-function getComplexityDescription(complexity: Complexity): string {
-  const descriptions: Record<Complexity, string> = {
+function getComplexityDescription(complexity: NoteComplexity): string {
+  const descriptions: Record<NoteComplexity, string> = {
     "very-easy": "Short definitions and simple facts.",
     easy: "Vocabulary, brief notes and familiar concepts.",
     normal: "The recommended default for most notes.",

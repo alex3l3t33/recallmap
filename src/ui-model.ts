@@ -3,7 +3,7 @@ import {
   recallProbability,
   stabilityAfterReview,
   type Complexity,
-  type ReviewRating,
+  type ReviewRating as AdaptiveReviewRating,
 } from "./model";
 
 export const DAY_IN_MS = 86_400_000;
@@ -33,6 +33,9 @@ export const DEFAULT_COMPLEXITY_MULTIPLIERS: ComplexityMultipliers = {
   complex: 1.4,
   "very-complex": 1.8,
 };
+
+export type NoteComplexity = Complexity;
+export type ReviewRating = "forgotten" | "difficult" | "good" | "easy";
 
 export type DashboardFilter =
   | "needs-review"
@@ -65,7 +68,7 @@ export interface MemoryRecord {
 
   history?: Array<{
     timestamp: number;
-    rating: ReviewRating;
+    rating: AdaptiveReviewRating;
     recallBeforeReview: number;
     stabilityBefore: number;
     stabilityAfter: number;
@@ -118,11 +121,18 @@ export function applyReview(
   const recallBeforeReview =
     previousRecall / 100;
 
+  const adaptiveRating: AdaptiveReviewRating =
+    rating === "forgotten"
+      ? "forgot"
+      : rating === "difficult"
+        ? "hard"
+        : rating;
+
   const newStabilityDays =
     stabilityAfterReview(
       record.stabilityDays,
       recallBeforeReview,
-      rating,
+      adaptiveRating,
       complexity,
       DEFAULT_SETTINGS,
     );
@@ -131,7 +141,7 @@ export function applyReview(
     ...(record.history ?? []),
     {
       timestamp: now,
-      rating,
+      rating: adaptiveRating,
       recallBeforeReview,
       stabilityBefore: record.stabilityDays,
       stabilityAfter: newStabilityDays,
@@ -157,7 +167,7 @@ export function applyReview(
 
       lapseCount:
         (record.lapseCount ?? 0) +
-        (rating === "forgot" ? 1 : 0),
+        (rating === "forgotten" ? 1 : 0),
 
       history,
     },

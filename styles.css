@@ -2486,3 +2486,51 @@
     background: Highlight;
   }
 }
+
+/* RecallMap reviewed timestamp */
+.recallmap-reviewed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.09);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.recallmap-reviewed-chip svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.2;
+  color: #a78bfa;
+}
+
+/* RecallMap reviewed timestamp */
+.recallmap-reviewed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.09);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.recallmap-reviewed-chip svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.2;
+  color: #a78bfa;
+}
