@@ -41,6 +41,9 @@ import {
 } from "./model";
 
 const VIEW_TYPE_RECALLMAP = "recallmap-dashboard";
+const KO_FI_URL = "https://ko-fi.com/alexandre42682";
+const SUPPORT_MESSAGE =
+  "If RecallMap has earned a place in your workflow, thank you — your appreciation means a lot and helps support its continued development.";
 
 interface RecallMapSettings {
   excludedFolders: string[];
@@ -1409,6 +1412,29 @@ class RecallMapSettingTab extends PluginSettingTab {
                   console.error("RecallMap: Failed to restore multipliers", error);
                   new Notice("Could not save RecallMap settings.");
                 });
+            },
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Support RecallMap",
+        items: [
+          {
+            name: "Support RecallMap",
+            desc: SUPPORT_MESSAGE,
+            render: (setting) => {
+              setting
+                .setName("Support RecallMap")
+                .setDesc(SUPPORT_MESSAGE)
+                .addButton((button) =>
+                  button
+                    .setButtonText("Support on Ko-fi")
+                    .setCta()
+                    .onClick(() => {
+                      window.open(KO_FI_URL, "_blank", "noopener,noreferrer");
+                    }),
+                );
             },
           },
         ],
